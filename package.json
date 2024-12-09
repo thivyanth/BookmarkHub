@@ -3,7 +3,10 @@
     "version": "0.1.0",
     "private": true,
     "description": "BookmarkHub,sync bookmarks across different browsers",
-    "keywords": ["BookmarkHub", "sync bookmarks"],
+    "keywords": [
+        "BookmarkHub",
+        "sync bookmarks"
+    ],
     "author": "dudor",
     "license": "",
     "dependencies": {
@@ -163,5 +166,8 @@
         "presets": [
             "react-app"
         ]
+    },
+    "devDependencies": {
+        "@types/lodash": "^4.17.13"
     }
 }

@@ -3,8 +3,11 @@ import BookmarkService from '../../utils/services'
 import { Setting } from '../../utils/setting'
 import iconLogo from '../../icons/icon128.png'
 import { OperType, BookmarkInfo, SyncDataInfo, RootBookmarksType, BrowserType } from '../../utils/models'
+import { debounce } from 'lodash';
+
 let curOperType = OperType.NONE;
 let curBrowserType = BrowserType.CHROME;
+const debouncedAutoSync = debounce(autoSyncToGist, 5000);
 browser.runtime.onMessage.addListener(async (msg, sender) => {
     if (msg.name === 'upload') {
         curOperType = OperType.SYNC
@@ -34,32 +37,32 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
 });
 browser.bookmarks.onCreated.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-        // console.log("onCreated", id, info)
         browser.browserAction.setBadgeText({ text: "!" });
         browser.browserAction.setBadgeBackgroundColor({ color: "#F00" });
         refreshLocalCount();
+        debouncedAutoSync();
     }
 });
 browser.bookmarks.onChanged.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-        // console.log("onChanged", id, info)
         browser.browserAction.setBadgeText({ text: "!" });
         browser.browserAction.setBadgeBackgroundColor({ color: "#F00" });
+        debouncedAutoSync();
     }
 })
 browser.bookmarks.onMoved.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-        // console.log("onMoved", id, info)
         browser.browserAction.setBadgeText({ text: "!" });
         browser.browserAction.setBadgeBackgroundColor({ color: "#F00" });
+        debouncedAutoSync();
     }
 })
 browser.bookmarks.onRemoved.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-        // console.log("onRemoved", id, info)
         browser.browserAction.setBadgeText({ text: "!" });
         browser.browserAction.setBadgeBackgroundColor({ color: "#F00" });
         refreshLocalCount();
+        debouncedAutoSync();
     }
 })
 
@@ -357,5 +360,62 @@ async function backupToLocalStorage(bookmarks: BookmarkInfo[]) {
     }
     catch (error) {
         console.error(error)
+    }
+}
+
+async function autoSyncToGist() {
+    try {
+        let setting = await Setting.build();
+        if (!setting.enableAutoSync) {
+            return;
+        }
+        
+        if (!setting.githubToken || !setting.gistID || !setting.gistFileName) {
+            console.log("Missing required settings for auto-sync");
+            return;
+        }
+
+        curOperType = OperType.SYNC;
+        
+        // Get current bookmarks
+        let bookmarks = await getBookmarks();
+        let syncdata = new SyncDataInfo();
+        syncdata.version = browser.runtime.getManifest().version;
+        syncdata.createDate = Date.now();
+        syncdata.bookmarks = formatBookmarks(bookmarks);
+        syncdata.browser = navigator.userAgent;
+
+        // Update Gist
+        await BookmarkService.update(JSON.stringify({
+            files: {
+                [setting.gistFileName]: {
+                    content: JSON.stringify(syncdata)
+                }
+            },
+            description: `Auto-sync: ${new Date().toISOString()}`
+        }));
+
+        // Update remote count
+        const count = getBookmarkCount(syncdata.bookmarks);
+        await browser.storage.local.set({ remoteCount: count });
+
+        // Clear the badge since we're now in sync
+        browser.browserAction.setBadgeText({ text: "" });
+
+        if (setting.enableNotify) {
+            await browser.notifications.create({
+                type: "basic",
+                iconUrl: iconLogo,
+                title: "Auto-Sync Bookmarks",
+                message: browser.i18n.getMessage('success')
+            });
+        }
+
+        curOperType = OperType.NONE;
+    } catch (error) {
+        console.error("Auto-sync failed:", error);
+        curOperType = OperType.NONE;
+        browser.browserAction.setBadgeText({ text: "!" });
+        browser.browserAction.setBadgeBackgroundColor({ color: "#F00" });
     }
 }

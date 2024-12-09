@@ -8,7 +8,7 @@ export class SettingBase implements Options {
     gistFileName: string = 'BookmarkHub';
     enableNotify: boolean = true;
     githubURL: string = 'https://api.github.com';
-    enableAutoSync: boolean = false;
+    enableAutoSync: boolean = true;
 }
 export class Setting extends SettingBase {
     private constructor() { super() }
